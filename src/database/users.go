@@ -23,7 +23,7 @@ var insertUserQuery string = `INSERT INTO user (user_id, name, email, password) 
 var updateUserQuery string = `UPDATE user SET name = ?, email = ?, password = ? WHERE user_id = ?`
 var deleteUserQuery string = `DELETE FROM users WHERE id = ?`
 
-func createUser(user *User) (uuid.UUID, bool) {
+func CreateUser(user *User) bool {
 	cn := db.GetConnection()
 	defer cn.Close()
 	user.Id = uuid.New()
@@ -32,13 +32,13 @@ func createUser(user *User) (uuid.UUID, bool) {
 
 	if err != nil {
 		log.Fatal(err)
-		return user.Id, false
+		return false
 	}
 
-	return user.Id, true
+	return true
 }
 
-func updateUser(user User) bool {
+func UpdateUser(user User) bool {
 	cn := db.GetConnection()
 	defer cn.Close()
 	user.Id = uuid.New()

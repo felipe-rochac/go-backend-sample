@@ -8,8 +8,14 @@ import (
 )
 
 type DatabaseConfiguration struct {
-	Host, Database, User, Password                string
-	Port, MaxLifetime, MaxOpenConns, MaxIdleConns int
+	Host         string `json,yaml:host`
+	Database     string `json,yaml:database`
+	User         string `json,yaml:user`
+	Password     string `json,yaml:password`
+	Port         int    `json,yaml:port`
+	MaxLifetime  int    `json,yaml:maxLifetime`
+	MaxOpenConns int    `json,yaml:maxOpenConns`
+	MaxIdleConns int    `json,yaml:maxIdleConns`
 }
 
 var Configuration DatabaseConfiguration
