@@ -1,10 +1,12 @@
 package database
 
 import (
+	"backend-sample/common"
 	"database/sql"
 	"fmt"
-	"reflect"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 type DatabaseConfiguration struct {
@@ -18,25 +20,28 @@ type DatabaseConfiguration struct {
 	MaxIdleConns int    `json,yaml:maxIdleConns`
 }
 
-var Configuration DatabaseConfiguration
-
-type MySqlDatabase struct {
+type MySqlDatabaseService struct {
+	Configuration DatabaseConfiguration
+	db            *sql.DB
 }
 
-func (db *MySqlDatabase) GetConnection() *sql.DB {
-	if reflect.ValueOf(Configuration).IsNil() {
-		panic(fmt.Errorf("Database configuration is not initialized."))
+func (m *MySqlDatabaseService) GetConnection() (*sql.DB, *common.BackendError) {
+	isEmpty := m.Configuration == DatabaseConfiguration{}
+	if isEmpty {
+		return nil, common.NewBackendError(500, "GetConnection.1", "database configuration is not initialized.", nil)
 	}
 
-	cn, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?tls=skip-verify&autocommit=true", Configuration.User, Configuration.Password, Configuration.Host, Configuration.Port, Configuration.Database))
-
-	if err != nil {
-		panic(err)
+	if m.db == nil {
+		var err error
+		m.db, err = sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?tls=skip-verify&autocommit=true", m.Configuration.User, m.Configuration.Password, m.Configuration.Host, m.Configuration.Port, m.Configuration.Database))
+		if err != nil {
+			return nil, common.NewBackendError(500, "GetConnection.2", "could not open connection to host %s", err, m.Configuration.Host)
+		}
 	}
 
-	cn.SetConnMaxLifetime(time.Duration(Configuration.MaxLifetime))
-	cn.SetMaxOpenConns(Configuration.MaxOpenConns)
-	cn.SetMaxIdleConns(Configuration.MaxIdleConns)
+	m.db.SetConnMaxLifetime(time.Duration(m.Configuration.MaxLifetime))
+	m.db.SetMaxOpenConns(m.Configuration.MaxOpenConns)
+	m.db.SetMaxIdleConns(m.Configuration.MaxIdleConns)
 
-	return cn
+	return m.db, nil
 }

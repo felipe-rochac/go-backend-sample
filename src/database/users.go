@@ -1,6 +1,7 @@
 package database
 
 import (
+	"backend-sample/common"
 	"fmt"
 	"log"
 	"strings"
@@ -8,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type User struct {
+type UserEntity struct {
 	Id                    uuid.UUID
 	Name, Email, Password string
 }
@@ -18,46 +19,182 @@ type UserWhereClause struct {
 	Name, Email string
 }
 
-var db MySqlDatabase
-var insertUserQuery string = `INSERT INTO user (user_id, name, email, password) VALUES (?, ?, ?, ?)`
-var updateUserQuery string = `UPDATE user SET name = ?, email = ?, password = ? WHERE user_id = ?`
-var deleteUserQuery string = `DELETE FROM users WHERE id = ?`
+var (
+	insertUserQuery     string = `INSERT INTO user (user_id, name, email, password) VALUES (?, ?, ?, ?)`
+	updateUserQuery     string = `UPDATE user SET name = ?, email = ?, password = ? WHERE user_id = ?`
+	deleteUserQuery     string = `DELETE FROM user WHERE user_id = ?`
+	selectUserByIdQuery string = `SELECT user_id, name, email, pasword FROM user WHERE user_id = ?`
+)
 
-func CreateUser(user *User) bool {
-	cn := db.GetConnection()
-	defer cn.Close()
-	user.Id = uuid.New()
-
-	_, err := cn.Exec(insertUserQuery, user.Id, user.Name, user.Email, user.Email, user.Password)
-
-	if err != nil {
-		log.Fatal(err)
-		return false
-	}
-
-	return true
+type UsersRepository interface {
+	CreateUser(user *UserEntity) (*UserEntity, *common.BackendError)
+	UpdateUser(user UserEntity) *common.BackendError
+	GetUsers(where UserWhereClause) (*[]UserEntity, *common.BackendError)
+	GetUsersByName(name string, exactMatch bool) (*[]UserEntity, *common.BackendError)
+	GetUserById(uuid uuid.UUID) (*UserEntity, *common.BackendError)
+	DeleteUser(uuid uuid.UUID) *common.BackendError
 }
 
-func UpdateUser(user User) bool {
-	cn := db.GetConnection()
-	defer cn.Close()
-	user.Id = uuid.New()
-
-	_, err := cn.Exec(updateUserQuery, user.Id, user.Name, user.Email, user.Email, user.Password)
-
-	if err != nil {
-		log.Fatal(err)
-		return false
-	}
-
-	return true
+type repositoryService struct {
+	db MySqlDatabaseService
 }
 
-func GetUsers(where UserWhereClause) ([]User, bool) {
-	users := make([]User, 0)
-	cn := db.GetConnection()
+func (repo *repositoryService) CreateUser(name, email, password string) (*UserEntity, *common.BackendError) {
+	cn, berr := repo.db.GetConnection()
+
+	if berr != nil {
+		return nil, berr
+	}
 	defer cn.Close()
-	query := "SELECT user_id, name, email, password FROM users "
+
+	id := uuid.New()
+	binary, err := common.UuidToBinary(id)
+
+	if err != nil {
+		return nil, common.NewBackendError(500, "CreateUser.1", "could generate an uuid", err)
+	}
+
+	_, err = cn.Exec(insertUserQuery, binary, name, email, password)
+
+	if err != nil {
+		return nil, common.NewBackendError(500, "CreateUser.2", "could not insert user", err)
+	}
+
+	user, err := repo.GetUserById(id)
+
+	if err != nil {
+		return nil, common.NewBackendError(500, "CreateUser.3", "could not retrieve user %s", err, name)
+	}
+
+	return user, nil
+}
+
+func (repo *repositoryService) UpdateUser(user UserEntity) *common.BackendError {
+	cn, berr := repo.db.GetConnection()
+
+	if berr != nil {
+		return berr
+	}
+	defer cn.Close()
+
+	id, err := common.UuidToBinary(user.Id)
+
+	if err != nil {
+		return common.NewBackendError(500, "UpdateUser.1", "error converting uuid to binary.", err)
+	}
+
+	result, err := cn.Exec(updateUserQuery, user.Name, user.Email, user.Password, id)
+
+	if err != nil {
+		return common.NewBackendError(500, "UpdateUser.2", "error executing query.", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+
+	if err != nil {
+		return common.NewBackendError(500, "UpdateUser.3", "error reading rows.", err)
+	}
+
+	if rowsAffected == 0 {
+		log.Println("No rows found")
+		return nil
+	}
+
+	return nil
+}
+
+func (repo *repositoryService) GetUsersByName(name string, exactMatch bool) (*[]UserEntity, *common.BackendError) {
+	cn, berr := repo.db.GetConnection()
+
+	if berr != nil {
+		return nil, berr
+	}
+
+	defer cn.Close()
+
+	var operator string = "="
+	if !exactMatch {
+		operator = "like"
+	}
+	rows, err := cn.Query(fmt.Sprintf("SELECT user_id, name, email, pasword FROM user WHERE name %s ?", operator), name)
+
+	if err != nil {
+		return nil, common.NewBackendError(500, "GetUserByName.1", "error querying user by name %s.", err, name)
+	}
+
+	users := make([]UserEntity, 0)
+	for rows.Next() {
+		var id []byte
+		var email, password string
+		err = rows.Scan(&id, &name, &email, &password)
+		if err != nil {
+			return nil, common.NewBackendError(500, "GetUserByName.2", "error reading row.", err, name)
+		}
+
+		uuid, err := uuid.FromBytes(id)
+
+		if err != nil {
+			return nil, common.NewBackendError(500, "GetUserByName.3", "error parsing user id to uuid.", err)
+		}
+
+		users = append(users, UserEntity{Id: uuid, Name: name, Email: email, Password: password})
+	}
+
+	return &users, nil
+
+}
+
+func (repo *repositoryService) GetUserById(id uuid.UUID) (*UserEntity, *common.BackendError) {
+	cn, berr := repo.db.GetConnection()
+
+	if berr != nil {
+		return nil, berr
+	}
+
+	defer cn.Close()
+
+	binary, err := common.UuidToBinary(id)
+
+	if err != nil {
+		return nil, common.NewBackendError(500, "GetUserById.1", "converting uuid %s.", err, id.String())
+	}
+
+	rows, err := cn.Query(selectUserByIdQuery, binary)
+
+	if err != nil {
+		return nil, common.NewBackendError(500, "GetUserById.2", "error querying user by id %s.", err, id.String())
+	}
+
+	if !rows.Next() {
+		return nil, nil
+	}
+
+	var name, email, password string
+	err = rows.Scan(&binary, &name, &email, &password)
+	if err != nil {
+		return nil, common.NewBackendError(500, "GetUserByName.3", "error reading row.", err, name)
+	}
+
+	uuid, err := uuid.FromBytes(binary)
+
+	if err != nil {
+		return nil, common.NewBackendError(500, "GetUserByName.4", "error parsing user id to uuid.", err)
+	}
+
+	return &UserEntity{Id: uuid, Name: name, Email: email, Password: password}, nil
+
+}
+
+func (repo *repositoryService) GetUsers(where UserWhereClause) (*[]UserEntity, *common.BackendError) {
+	users := make([]UserEntity, 0)
+	cn, berr := repo.db.GetConnection()
+
+	if berr != nil {
+		return nil, berr
+	}
+
+	defer cn.Close()
+	query := "SELECT user_id, name, email, password FROM user "
 	clause, values := buildWhereClause(where)
 	if len(clause) > 0 {
 		query += " WHERE " + clause
@@ -66,8 +203,7 @@ func GetUsers(where UserWhereClause) ([]User, bool) {
 	rows, err := cn.Query(query, values...)
 
 	if err != nil {
-		log.Fatal(err)
-		return nil, false
+		return &[]UserEntity{}, common.NewBackendError(500, "GetUsers.1", "could not execute query.", err)
 	}
 
 	defer rows.Close()
@@ -84,26 +220,45 @@ func GetUsers(where UserWhereClause) ([]User, bool) {
 
 		if err != nil {
 			log.Fatal(err)
-			return []User{}, false
+			return &[]UserEntity{}, common.NewBackendError(500, "GetUsers.2", "could not parse id to uuid.", err)
 		}
 
-		users = append(users, User{Id: uuid, Name: name, Email: email, Password: password})
+		users = append(users, UserEntity{Id: uuid, Name: name, Email: email, Password: password})
 	}
 
-	return users, true
+	return &users, nil
 }
 
-func DeleteUser(uuid uuid.UUIDs) bool {
-	cn := db.GetConnection()
-	defer cn.Close()
+func (repo *repositoryService) DeleteUser(uuid uuid.UUID) *common.BackendError {
+	cn, berr := repo.db.GetConnection()
 
-	_, err := cn.Exec(deleteUserQuery, uuid)
-	if err != nil {
-		log.Fatal(err)
-		return false
+	if berr != nil {
+		return berr
 	}
 
-	return true
+	defer cn.Close()
+
+	id, err := common.UuidToBinary(uuid)
+
+	if err != nil {
+		return common.NewBackendError(500, "DeleteUser.1", "cannot parse id to uuid", err)
+	}
+
+	result, err := cn.Exec(deleteUserQuery, id)
+	if err != nil {
+		return common.NewBackendError(500, "DeleteUser.2", "cannot execute query", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return common.NewBackendError(500, "DeleteUser.3", "failed to retrieve affected rows", err)
+	}
+
+	if rowsAffected == 0 {
+		log.Println("No rows deleted. UUID may not exist.")
+	}
+
+	return nil
 }
 
 func buildWhereClause(where UserWhereClause) (string, []interface{}) {

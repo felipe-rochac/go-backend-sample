@@ -1,0 +1,12 @@
+database:
+  host: "localhost"
+  database: "users"
+  user: "root"
+  password: "password"
+  port: 3306
+  maxLifetime: 60
+  maxOpenConns: 5
+  maxIdleConns: 5
+keys:
+  - key: error_code_enc
+    value: LefWEePuYpZb+lVpb+3XwJDj/uuyluNWeE8RI08fiCM=
