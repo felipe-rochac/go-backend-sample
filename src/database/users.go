@@ -23,11 +23,11 @@ var (
 	insertUserQuery     string = `INSERT INTO user (user_id, name, email, password) VALUES (?, ?, ?, ?)`
 	updateUserQuery     string = `UPDATE user SET name = ?, email = ?, password = ? WHERE user_id = ?`
 	deleteUserQuery     string = `DELETE FROM user WHERE user_id = ?`
-	selectUserByIdQuery string = `SELECT user_id, name, email, pasword FROM user WHERE user_id = ?`
+	selectUserByIdQuery string = `SELECT user_id, name, email, password FROM user WHERE user_id = ?`
 )
 
 type UsersRepository interface {
-	CreateUser(user *UserEntity) (*UserEntity, *common.BackendError)
+	CreateUser(name, email, password string) (*UserEntity, *common.BackendError)
 	UpdateUser(user UserEntity) *common.BackendError
 	GetUsers(where UserWhereClause) (*[]UserEntity, *common.BackendError)
 	GetUsersByName(name string, exactMatch bool) (*[]UserEntity, *common.BackendError)
@@ -39,9 +39,12 @@ type repositoryService struct {
 	db MySqlDatabaseService
 }
 
+func NewRepository(db MySqlDatabaseService) UsersRepository {
+	return &repositoryService{db: db}
+}
+
 func (repo *repositoryService) CreateUser(name, email, password string) (*UserEntity, *common.BackendError) {
 	cn, berr := repo.db.GetConnection()
-
 	if berr != nil {
 		return nil, berr
 	}
@@ -49,21 +52,21 @@ func (repo *repositoryService) CreateUser(name, email, password string) (*UserEn
 
 	id := uuid.New()
 	binary, err := common.UuidToBinary(id)
-
 	if err != nil {
 		return nil, common.NewBackendError(500, "CreateUser.1", "could generate an uuid", err)
 	}
 
 	_, err = cn.Exec(insertUserQuery, binary, name, email, password)
-
 	if err != nil {
 		return nil, common.NewBackendError(500, "CreateUser.2", "could not insert user", err)
 	}
 
-	user, err := repo.GetUserById(id)
-
-	if err != nil {
-		return nil, common.NewBackendError(500, "CreateUser.3", "could not retrieve user %s", err, name)
+	user, berr := repo.GetUserById(id)
+	if berr != nil {
+		if berr.Code == 404 {
+			return nil, common.NewBackendError(500, "CreateUser.3", "user not found after insert %s", err, name)
+		}
+		return nil, berr
 	}
 
 	return user, nil
@@ -116,7 +119,7 @@ func (repo *repositoryService) GetUsersByName(name string, exactMatch bool) (*[]
 	if !exactMatch {
 		operator = "like"
 	}
-	rows, err := cn.Query(fmt.Sprintf("SELECT user_id, name, email, pasword FROM user WHERE name %s ?", operator), name)
+	rows, err := cn.Query(fmt.Sprintf("SELECT user_id, name, email, password FROM user WHERE name %s ?", operator), name)
 
 	if err != nil {
 		return nil, common.NewBackendError(500, "GetUserByName.1", "error querying user by name %s.", err, name)
@@ -146,43 +149,38 @@ func (repo *repositoryService) GetUsersByName(name string, exactMatch bool) (*[]
 
 func (repo *repositoryService) GetUserById(id uuid.UUID) (*UserEntity, *common.BackendError) {
 	cn, berr := repo.db.GetConnection()
-
 	if berr != nil {
 		return nil, berr
 	}
-
 	defer cn.Close()
 
 	binary, err := common.UuidToBinary(id)
-
 	if err != nil {
 		return nil, common.NewBackendError(500, "GetUserById.1", "converting uuid %s.", err, id.String())
 	}
 
 	rows, err := cn.Query(selectUserByIdQuery, binary)
-
 	if err != nil {
 		return nil, common.NewBackendError(500, "GetUserById.2", "error querying user by id %s.", err, id.String())
 	}
+	defer rows.Close()
 
 	if !rows.Next() {
-		return nil, nil
+		return nil, common.NewBackendError(404, "GetUserById.3", "user not found for id %s", nil, id.String())
 	}
 
 	var name, email, password string
 	err = rows.Scan(&binary, &name, &email, &password)
 	if err != nil {
-		return nil, common.NewBackendError(500, "GetUserByName.3", "error reading row.", err, name)
+		return nil, common.NewBackendError(500, "GetUserById.4", "error reading row.", err)
 	}
 
 	uuid, err := uuid.FromBytes(binary)
-
 	if err != nil {
-		return nil, common.NewBackendError(500, "GetUserByName.4", "error parsing user id to uuid.", err)
+		return nil, common.NewBackendError(500, "GetUserById.5", "error parsing user id to uuid.", err)
 	}
 
 	return &UserEntity{Id: uuid, Name: name, Email: email, Password: password}, nil
-
 }
 
 func (repo *repositoryService) GetUsers(where UserWhereClause) (*[]UserEntity, *common.BackendError) {

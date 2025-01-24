@@ -19,12 +19,19 @@ type UsersWorkflow interface {
 }
 
 type UserRequest struct {
-	Id, Name, Email, Password string
+	Id       string `json:id`
+	Name     string `json:name`
+	Email    string `json:email`
+	Password string `json:password`
 }
 
 type UserResponse struct {
 	Id                    uuid.UUID
 	Name, Email, Password string
+}
+
+func NewUserWorkflow(repository database.UsersRepository) *UserWorkflowService {
+	return &UserWorkflowService{repository: repository}
 }
 
 func (w *UserWorkflowService) Create(req UserRequest) (*UserResponse, *common.BackendError) {
@@ -41,7 +48,7 @@ func (w *UserWorkflowService) Create(req UserRequest) (*UserResponse, *common.Ba
 		return nil, common.NewBackendError(400, "Workflows.CreateUser.4", "invalid password", nil)
 	}
 
-	user, err := w.repository.CreateUser(&database.UserEntity{Name: req.Name, Email: req.Email, Password: req.Password})
+	user, err := w.repository.CreateUser(req.Name, req.Email, req.Password)
 
 	if err != nil {
 		return nil, err

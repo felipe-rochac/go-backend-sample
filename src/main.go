@@ -1,6 +1,7 @@
 package main
 
 import (
+	"backend-sample/apis"
 	"backend-sample/common"
 	"backend-sample/database"
 	"backend-sample/middlewares"
@@ -20,6 +21,7 @@ var mysqldb database.MySqlDatabaseService
 
 func main() {
 	readDbConfig()
+	apis.Initialize(mysqldb)
 
 	key, err := common.GenerateAESKey(32)
 
@@ -27,7 +29,7 @@ func main() {
 		log.Fatalf("Could not generate AES")
 	}
 
-	fmt.Println(fmt.Sprintf("AWS key: %s", common.EncodeBase64(key)))
+	fmt.Println(fmt.Sprintf("AES key: %s", common.EncodeBase64(key)))
 
 	router := gin.Default()
 	router.Use(middlewares.ErrorHandler)
@@ -37,6 +39,9 @@ func main() {
 			"message": "pong",
 		})
 	})
+
+	router.GET("/users", apis.GetUser)
+	router.POST("/users", apis.AddUser)
 
 	if err := router.Run(); err != nil {
 		log.Fatalf("Failed to run server: %v", err)

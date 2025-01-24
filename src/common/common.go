@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -67,4 +69,13 @@ func ReadFileText(fileName string) (string, error) {
 
 func PrintFormat(msg string, a ...any) {
 	fmt.Println(fmt.Sprintf(msg, a...))
+}
+
+func RequestBodyToString(reader io.ReadCloser) (string, error) {
+	buff := new(strings.Builder)
+	if _, err := io.Copy(buff, reader); err != nil {
+		return "", err
+	}
+
+	return buff.String(), nil
 }
