@@ -3,7 +3,6 @@ package apis
 import (
 	"backend-sample/database"
 	"backend-sample/workflows"
-	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -24,21 +23,12 @@ func GetUser(c *gin.Context) {
 	userId, _ := c.GetQuery("user_id")
 	name, _ := c.GetQuery("name")
 
-	result, err := userWorkflow.GetUsers(userId, name)
+	response, err := userWorkflow.GetUsers(userId, name)
 
 	if err != nil {
 		c.Errors = append(c.Errors, c.Error(err))
 		return
 	}
-
-	b, backErr := json.Marshal(result)
-
-	if backErr != nil {
-		c.Errors = append(c.Errors, c.Error(err))
-		return
-	}
-
-	response := string(b)
 
 	c.JSON(http.StatusOK, response)
 }
@@ -51,21 +41,12 @@ func AddUser(c *gin.Context) {
 		return
 	}
 
-	result, err := userWorkflow.Create(body)
+	response, err := userWorkflow.Create(body)
 
 	if err != nil {
 		c.Errors = append(c.Errors, c.Error(err))
 		return
 	}
-
-	b, backErr := json.Marshal(result)
-
-	if backErr != nil {
-		c.Errors = append(c.Errors, c.Error(err))
-		return
-	}
-
-	response := string(b)
 
 	c.JSON(http.StatusOK, response)
 }
