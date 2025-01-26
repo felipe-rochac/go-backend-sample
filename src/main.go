@@ -32,7 +32,8 @@ func main() {
 	fmt.Println(fmt.Sprintf("AES key: %s", common.EncodeBase64(key)))
 
 	router := gin.Default()
-	router.Use(middlewares.ErrorHandler)
+	router.Use(middlewares.MiddlewareHandler)
+	router.Use(middlewares.ResponseFormatMiddleware)
 
 	router.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{
@@ -42,6 +43,8 @@ func main() {
 
 	router.GET("/users", apis.GetUser)
 	router.POST("/users", apis.AddUser)
+	router.DELETE("/users/:userId", apis.DeleteUser)
+	router.PUT("/users/:userId", apis.UpdateUser)
 
 	if err := router.Run(); err != nil {
 		log.Fatalf("Failed to run server: %v", err)

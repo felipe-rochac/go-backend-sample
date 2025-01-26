@@ -3,7 +3,6 @@ package apis
 import (
 	"backend-sample/database"
 	"backend-sample/workflows"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -30,7 +29,7 @@ func GetUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	c.Set("response", response)
 }
 
 func AddUser(c *gin.Context) {
@@ -48,5 +47,39 @@ func AddUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	c.Set("response", response)
+}
+
+func UpdateUser(c *gin.Context) {
+	var body workflows.UserRequest
+
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"error": "invalid payload"})
+		return
+	}
+
+	body.Id = c.Param("userId")
+
+	response, err := userWorkflow.Update(body)
+
+	if err != nil {
+		c.Errors = append(c.Errors, c.Error(err))
+		return
+	}
+
+	c.Set("response", response)
+}
+
+func DeleteUser(c *gin.Context) {
+	userId := c.Param("userId")
+
+	err := userWorkflow.Delete(userId)
+
+	if err != nil {
+		c.Errors = append(c.Errors, c.Error(err))
+		return
+	}
+
+	var emptyInterface interface{}
+	c.Set("response", emptyInterface)
 }
