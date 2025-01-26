@@ -33,7 +33,6 @@ func main() {
 
 	router := gin.Default()
 	router.Use(middlewares.MiddlewareHandler)
-	router.Use(middlewares.ResponseFormatMiddleware)
 
 	router.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{
